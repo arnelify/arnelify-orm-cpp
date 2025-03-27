@@ -41,6 +41,7 @@ class ArnelifyORM {
   void (*orm_destroy)();
   const char* (*orm_exec)(const char*, const char*);
   void (*orm_free)(const char*);
+  const char* (*orm_get_uuid)();
 
   template <typename T>
   void loadFunction(const std::string& name, T& func) {
@@ -165,6 +166,7 @@ class ArnelifyORM {
     loadFunction("orm_destroy", this->orm_destroy);
     loadFunction("orm_exec", this->orm_exec);
     loadFunction("orm_free", this->orm_free);
+    loadFunction("orm_get_uuid", this->orm_get_uuid);
 
     Json::StreamWriterBuilder writer;
     writer["indentation"] = "";
@@ -215,14 +217,16 @@ class ArnelifyORM {
     } else if (std::holds_alternative<bool>(default_)) {
       const bool value = std::get<bool>(default_);
       query += " " + std::string(value ? "DEFAULT NULL" : "NOT NULL");
+    } else if (std::holds_alternative<double>(default_)) {
+      query += " NOT NULL DEFAULT " + std::to_string(std::get<double>(default_));
     } else if (std::holds_alternative<int>(default_)) {
-      query += std::to_string(std::get<int>(default_));
+      query += " NOT NULL DEFAULT " + std::to_string(std::get<int>(default_));
     } else if (std::holds_alternative<std::string>(default_)) {
       const std::string value = std::get<std::string>(default_);
       if (value == "CURRENT_TIMESTAMP") {
-        query += " DEFAULT CURRENT_TIMESTAMP";
+        query += " NOT NULL DEFAULT CURRENT_TIMESTAMP";
       } else {
-        query += "'" + std::get<std::string>(default_) + "'";
+        query += " NOT NULL DEFAULT '" + value + "'";
       }
     }
 
@@ -362,7 +366,8 @@ class ArnelifyORM {
     writer["emitUTF8"] = true;
 
     const std::string bindingsString = Json::writeString(writer, bindingsJson);
-    const char* cRes = this->orm_exec(this->query.c_str(), bindingsString.c_str());
+    const char* cRes =
+        this->orm_exec(this->query.c_str(), bindingsString.c_str());
     const std::string serialized = cRes;
 
     Json::Value resJson;
@@ -405,6 +410,13 @@ class ArnelifyORM {
     this->query.clear();
 
     return res;
+  }
+
+  const std::string getUuid() {
+    const char* cUuId = this->orm_get_uuid();
+    const std::string uuid = cUuId;
+    this->orm_free(cUuId);
+    return uuid;
   }
 
   ArnelifyORM* groupBy(const std::vector<std::string>& args) {
@@ -471,15 +483,15 @@ class ArnelifyORM {
         continue;
       }
 
-      if (std::holds_alternative<int>(value)) {
-        const std::string binding = std::to_string(std::get<int>(value));
+      if (std::holds_alternative<double>(value)) {
+        const std::string binding = std::to_string(std::get<double>(value));
         this->bindings.emplace_back(binding);
         values << "?";
         continue;
       }
-
-      if (std::holds_alternative<double>(value)) {
-        const std::string binding = std::to_string(std::get<double>(value));
+      
+      if (std::holds_alternative<int>(value)) {
+        const std::string binding = std::to_string(std::get<int>(value));
         this->bindings.emplace_back(binding);
         values << "?";
         continue;
@@ -683,14 +695,15 @@ class ArnelifyORM {
   void reference(const std::string& column, const std::string& tableName,
                  const std::string& foreign,
                  const std::vector<std::string> args) {
-    std::string query = "CONSTRAINT fk_" + tableName + " FOREIGN KEY (" +
-                        column + ") REFERENCES " + tableName + "(" + foreign +
-                        ")";
+    std::string query = "CONSTRAINT fk_" + tableName + "_" + this->getUuid() +
+                        " FOREIGN KEY (" + column + ") REFERENCES " +
+                        tableName + "(" + foreign + ")";
 
     const bool isAlter = this->query.starts_with("ALTER");
     if (isAlter) {
-      query = "ADD CONSTRAINT fk_" + tableName + " FOREIGN KEY (" + column +
-              ") REFERENCES " + tableName + "(" + foreign + ")";
+      query = "ADD CONSTRAINT fk_" + tableName + "_" + this->getUuid() +
+              " FOREIGN KEY (" + column + ") REFERENCES " + tableName + "(" +
+              foreign + ")";
     }
 
     for (size_t i = 0; args.size() > i; i++) {
