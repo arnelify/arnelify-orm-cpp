@@ -5,36 +5,34 @@
 
 #include "json.h"
 
-#include "../index.cpp"
+#include "../index.h"
 
 int main(int argc, char* argv[]) {
 
-  Json::Value opts;
-  opts["ORM_DRIVER"] = "mysql";
-  opts["ORM_HOST"] = "mysql";
-  opts["ORM_NAME"] = "test";
-  opts["ORM_USER"] = "root";
-  opts["ORM_PASS"] = "pass";
-  opts["ORM_PORT"] = 3306;
-
-  ArnelifyORM* db = new ArnelifyORM(opts);
-  ArnelifyORMRes res;
+  MySQLOpts opts(10, "mysql", "test", "root", "pass", 3306);
+  MySQL* db = new MySQL(opts);
+  MySQLRes res;
 
   Json::StreamWriterBuilder writer;
   writer["indentation"] = "";
   writer["emitUTF8"] = true;
 
+  db->connect();
+  std::cout << "Connected." << std::endl;
+
+  db->foreignKeyChecks(false);
   db->dropTable("users");
   db->dropTable("posts");
+  db->foreignKeyChecks(true);
 
-  db->createTable("users", [](ArnelifyORM* query){
+  db->createTable("users", [](MySQLQuery* query){
     query->column("id", "BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY");
     query->column("email", "VARCHAR(255) UNIQUE", nullptr);
     query->column("created_at", "DATETIME", "CURRENT_TIMESTAMP");
     query->column("updated_at", "DATETIME", nullptr);
   });
 
-  db->createTable("posts", [](ArnelifyORM* query){
+  db->createTable("posts", [](MySQLQuery* query){
     query->column("id", "BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY");
     query->column("user_id", "BIGINT UNSIGNED", nullptr);
     query->column("contents", "VARCHAR(2048)", nullptr);
@@ -68,6 +66,10 @@ int main(int argc, char* argv[]) {
     ->delete_()
     ->where("id", 1)
     ->limit(1);
+
+  db->close();
+  std::cout << "Closed." << std::endl;
+  delete db;
 
   return 0;
 }
