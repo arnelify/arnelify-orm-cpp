@@ -143,6 +143,9 @@ class MySQLQuery {
   }
 
   const bool hasCondition() {
+    const bool isNull = this->query.ends_with("IS NULL");
+    if (isNull) return true;
+    
     std::vector<std::string> tokens;
     std::istringstream stream(this->query);
     std::string token;
@@ -153,8 +156,6 @@ class MySQLQuery {
     if (tokens.size() < 3) return false;
 
     const std::string& op  = tokens[tokens.size() - 2];
-    const std::string& rhs = tokens[tokens.size() - 1];
-    if (rhs == "IS NULL") return true;
     return isOperator(op);
   }
 
